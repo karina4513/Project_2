@@ -4,7 +4,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-API_KEY = '	I48BTzRvPkaFkhGVVyiqON1xQi3jALOQ'
+API_KEY = 'U8k9RWeAo9PSaxVU8OgGpkWt3MRIGtRc'
 
 def get_season():
     month = datetime.now().month
