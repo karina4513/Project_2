@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результаты погоды</title>
+</head>
+<body>
+    <h1>Результаты проверки погоды</h1>
+
+    {% if weather_condition %}
+        <p>{{ weather_condition }}</p>
+    {% endif %}
+
+    {% if start_weather %}
+        <h2>Погода в начальном городе:</h2>
+        <p>Температура: {{ start_weather.temperature_celsius }} °C</p>
+        <p>Скорость ветра: {{ start_weather.wind_speed_kph }} км/ч</p>
+        <p>Вероятность дождя: {{ start_weather.rain_probability_percent }}%</p>
+        <p>Влажность: {{ start_weather.humidity_percent }}%</p>
+    {% endif %}
+
+    {% if end_weather %}
+        <h2>Погода в конечном городе:</h2>
+        <p>Температура: {{ end_weather.temperature_celsius }} °C</p>
+        <p>Скорость ветра: {{ end_weather.wind_speed_kph }} км/ч</p>
+        <p>Вероятность дождя: {{ end_weather.rain_probability_percent }}%</p>
+        <p>Влажность: {{ end_weather.humidity_percent }}%</p>
+    {% endif %}
+
+    <form action="/" method="get">
+        <button type="submit">Вернуться на главную страницу</button>
+    </form>
+</body>
+</html>
