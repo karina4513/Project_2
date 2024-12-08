@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Погода</title>
+</head>
+<body>
+    <h1>Проверка погоды</h1>
+    <form action="/weather" method="post">
+        <label for="start_city">Начальный город:</label>
+        <input type="text" id="start_city" name="start_city" required>
+        <br>
+        <label for="end_city">Конечный город:</label>
+        <input type="text" id="end_city" name="end_city" required>
+        <br>
+        <input type="submit" value="Проверить погоду">
+    </form>
+</body>
+</html>
