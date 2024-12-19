@@ -1,0 +1,222 @@
+from flask import Flask, request, render_template
+import requests
+import plotly.express as px
+import dash
+from dash import html
+from dash import dcc
+from dash.dependencies import Input, Output
+from datetime import datetime
+import pandas as pd
+
+# Ваш ключ API AccuWeather
+API_KEY = 'QAMcPR3GH7aqB5LZ4LGwo264X3yBH7TG'
+
+# Инициализация Flask приложения
+app = Flask(__name__)
+
+# Инициализация Dash внутри Flask
+dash_app = dash.Dash(__name__, server=app, url_base_pathname='/dash/')
+
+# Функция для получения координат города
+def get_coordinates(city_name):
+    url = f'http://dataservice.accuweather.com/locations/v1/cities/search'
+    params = {
+        'apikey': API_KEY,
+        'q': city_name,
+        'language': 'ru-ru'
+    }
+
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code != 200:
+            return None, None, f"Ошибка при получении координат: HTTP статус {response.status_code}"
+
+        data = response.json()
+        if not data:
+            return None, None, f"Нет данных о местоположении для города: {city_name}"
+
+        return data[0]['GeoPosition']['Latitude'], data[0]['GeoPosition']['Longitude'], None
+
+    except requests.exceptions.RequestException as e:
+        return None, None, f"Ошибка при подключении к серверу: {str(e)}"
+
+
+# Функция для получения ключа местоположения
+def get_location_key(latitude, longitude):
+    url = 'http://dataservice.accuweather.com/locations/v1/cities/geoposition/search'
+    params = {
+        'apikey': API_KEY,
+        'q': f'{latitude},{longitude}',
+        'language': 'ru-ru'
+    }
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        return None
+
+    data = response.json()
+    return data['Key'] if 'Key' in data else None
+
+def get_forecast(location_key):
+    url = f'http://dataservice.accuweather.com/forecasts/v1/daily/5day/{location_key}'
+    params = {
+        'apikey': API_KEY,
+        'language': 'ru-ru',
+        'details': 'true',
+        'metric': 'true'
+    }
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        print(f"Ошибка при получении прогноза погоды: {response.status_code}, {response.text}")
+        return None
+
+    data = response.json()
+    print("Полученные данные о прогнозе:", data)  # Добавлено для отладки
+    if 'DailyForecasts' not in data:
+        print("Ошибка: Нет данных о прогнозе погоды")
+        return None
+
+    return data
+
+
+
+def extract_weather_parameters(weather_data):
+    try:
+        # Выводим данные, чтобы увидеть их структуру
+        print("Полученные данные о погоде:", weather_data)
+
+        # Проверим, есть ли данные о температуре и ветре
+        temperature_celsius = weather_data['Temperature']['Maximum']['Value']  # Изменено для получения максимальной температуры
+        wind_speed = weather_data['Day']['Wind']['Speed']['Value']  # Изменено для получения скорости ветра
+
+        # Влажность и вероятность осадков
+        humidity_percent = weather_data['Day'].get('RelativeHumidity', 'Не доступно')
+        rain_probability = weather_data['Day'].get('PrecipitationProbability', 'Не доступно')
+
+    except KeyError as e:
+        print(f"Ошибка извлечения данных: {e}")
+        return None
+
+    return {
+        'temperature': temperature_celsius,
+        'humidity': humidity_percent,
+        'wind_speed': wind_speed,
+        'rain_probability': rain_probability
+    }
+
+
+
+@app.route('/', methods=['GET'])
+def index():
+    return render_template('index.html')
+
+@app.route('/weather', methods=['POST'])
+def weather():
+    start_city = request.form.get('start_city')
+    end_city = request.form.get('end_city')
+
+    # Получаем координаты для начального города
+    start_latitude, start_longitude, error_message_start = get_coordinates(start_city)
+    if error_message_start:
+        return render_template('result.html', weather_condition=error_message_start)
+
+    # Получаем координаты для конечного города
+    end_latitude, end_longitude, error_message_end = get_coordinates(end_city)
+    if error_message_end:
+        return render_template('result.html', weather_condition=error_message_end)
+
+    try:
+        # Получаем ключи местоположений для обоих городов
+        start_location_key = get_location_key(start_latitude, start_longitude)
+        end_location_key = get_location_key(end_latitude, end_longitude)
+
+        # Получаем прогнозы погоды для обоих городов
+        start_forecast = get_forecast(start_location_key)
+        end_forecast = get_forecast(end_location_key)
+
+        # Проверяем, что прогнозы не пустые
+        if not start_forecast or not end_forecast:
+            return render_template('result.html', weather_condition="Ошибка при получении прогноза погоды")
+
+        # Извлекаем данные о погоде для графиков
+        start_weather = [extract_weather_parameters(day) for day in start_forecast['DailyForecasts']]
+        end_weather = [extract_weather_parameters(day) for day in end_forecast['DailyForecasts']]
+
+        # Проверяем, что переменные не пустые
+        if not start_weather or not end_weather:
+            return render_template('result.html', weather_condition="Ошибка при извлечении данных о погоде")
+
+        # Отправляем данные в шаблон
+        return render_template('result.html',
+                               start_city=start_city,
+                               end_city=end_city,
+                               start_weather=start_weather,
+                               end_weather=end_weather)
+
+    except Exception as e:
+        return render_template('result.html', weather_condition=f"Произошла ошибка: {str(e)}")
+
+# Определение Layout для Dash-приложения
+dash_app.layout = html.Div([
+    html.H1("Прогноз погоды для города"),
+    dcc.Dropdown(
+        id='city-dropdown',
+        options=[
+            {'label': 'Москва', 'value': 'Москва'},
+            {'label': 'Санкт-Петербург', 'value': 'Санкт-Петербург'}
+        ],
+        value='Москва',  # Значение по умолчанию
+        style={'width': '50%'}
+    ),
+    dcc.Graph(id='weather-graph')  # График для отображения погоды
+])
+
+# Колбэк для обновления графика
+@dash_app.callback(
+    Output('weather-graph', 'figure'),
+    Input('city-dropdown', 'value')
+)
+def update_graph(selected_city):
+    # Получаем данные для выбранного города
+    latitude, longitude, _ = get_coordinates(selected_city)
+    location_key = get_location_key(latitude, longitude)
+    forecast = get_forecast(location_key)
+
+    # Извлекаем данные о погоде
+    weather_data = [extract_weather_parameters(day) for day in forecast['DailyForecasts']]
+    days = [day['Date'] for day in forecast['DailyForecasts']]
+
+    # Строим график
+    df = pd.DataFrame(weather_data)
+    df['Date'] = pd.to_datetime(days)
+
+    fig = px.line(df, x='Date', y='temperature', title=f'Прогноз температуры для города {selected_city}')
+
+    return fig
+
+def get_current_weather(location_key):
+    url = f'http://dataservice.accuweather.com/currentconditions/v1/{location_key}'
+    params = {
+        'apikey': API_KEY,
+        'language': 'ru-ru',
+        'details': 'true'
+    }
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        print(f"Ошибка при получении данных о погоде: {response.status_code}")
+        return None
+
+    data = response.json()
+    if not data:
+        print("Ошибка: Нет данных о погоде")
+        return None
+
+    # Выведем весь ответ, чтобы увидеть структуру данных
+    print("Полученные данные о погоде:", data)
+
+    return data[0]  # Получаем первый элемент списка
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
